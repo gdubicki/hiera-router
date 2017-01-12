@@ -8,7 +8,7 @@ class Hiera
 				require 'yaml'
 				@cache = cache || Filecache.new
 				@backends = {}
-				if backend_list = Config[:router][:backends]
+				if backend_list = Config[:router][:backends] + Config[:router][:fallback]
 					backend_list.each do |backend|
 						backend_config = Config[:router][backend.to_sym] || {}
 						backend_classname = backend_config[:backend_class] || backend
@@ -20,6 +20,7 @@ class Hiera
 
 				Hiera.debug("[hiera-router] hiera router initialized")
 			end
+      
 			def lookup(key, scope, order_override, resolution_type)
 				options = {
 					:key => key,
@@ -115,21 +116,22 @@ class Hiera
 
 			def parse_string(data, scope, options, path = [])
 				if match = data.match(/^backend\[([^,]+)(?:,(.*))?\]$/)
-					backend_name, backend_parameters = match.captures
-					backend_options = options
-					backend_options = backend_options.merge(backend_parameters) if backend_parameters
-					Hiera.debug("[hiera-router] Calling hiera with '#{backend_name}'...")
-					if backend = backends[backend_name]
-						result = backend.lookup(backend_options[:key], backend_options[:scope], nil, backend_options[:resolution_type])
-					else
-						Hiera.warn "Backend '#{backend_name}' was not configured; returning the data as-is."
-						result = data
-					end
-					Hiera.debug("[hiera-router] Call to '#{backend_name}' finished.")
-					return recursive_key_from_hash(result, path)
+          backend_name, backend_parameters = match.captures
 				else
-					Backend.parse_string(data, scope)
+					backend_name = Config[:router][:fallback]
 				end
+        
+        backend_options = options
+				backend_options = backend_options.merge(backend_parameters) if backend_parameters
+				Hiera.debug("[hiera-router] Calling hiera with '#{backend_name}'...")
+				if backend = backends[backend_name]
+					result = backend.lookup(backend_options[:key], backend_options[:scope], nil, backend_options[:resolution_type])
+				else
+					Hiera.warn "Backend '#{backend_name}' was not configured; returning the data as-is."
+					result = data
+				end
+				Hiera.debug("[hiera-router] Call to '#{backend_name}' finished.")
+				return recursive_key_from_hash(result, path)
 			end
 		end
 	end
